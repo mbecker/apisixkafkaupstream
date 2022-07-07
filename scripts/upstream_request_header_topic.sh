@@ -1,3 +1,7 @@
+#!/bin/bash
+# The plugin is configured  with the global topic "kafkaupstream" 
+# This request inlucdes the header "topic: kafkaupstream2"
+# This request tests that the key is taken from the header
 curl --location --request POST 'http://localhost:9080/kafkaupstream' \
 --header 'topic: kafkaupstream2' \
 --header 'Content-Type: application/json' \

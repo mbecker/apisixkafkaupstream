@@ -1,3 +1,6 @@
+#!/bin/bash
+# The plugin is configured  with the jsonkey "glossary.GlossDiv.title" 
+# This request tests that the key is taken from the JSON
 curl --location --request POST 'http://localhost:9080/kafkaupstream' \
 --header 'Content-Type: application/json' \
 --data-raw '{

@@ -1,14 +1,16 @@
 #!/bin/bash
 # The plugin is configured  with the jsonkey "glossary.GlossDiv.title" 
-# This request tests that the key is taken from the header
+# This request tests that the key is a JSON object rather a primitive type like string, int, bool
 curl --location --request POST 'http://localhost:9080/kafkaupstream' \
---header 'key: headerkey' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "glossary": {
         "title": "example glossary",
 		"GlossDiv": {
-            "title": "The Kafka Message ID configured globally by jsonkey but overwritten by the header key",
+            "title": {
+                "key": "Test key for jsonkey to get a complete object as a kafka message key",
+                "test": "vlaue"
+            },
 			"GlossList": {
                 "GlossEntry": {
                     "ID": "SGML",

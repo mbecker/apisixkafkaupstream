@@ -27,7 +27,7 @@ import (
 	"github.com/apache/apisix-go-plugin-runner/pkg/log"
 	"github.com/apache/apisix-go-plugin-runner/pkg/plugin"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/elgs/gojq"
+	"github.com/tidwall/gjson"
 )
 
 const HeaderKey string = "key"
@@ -64,46 +64,52 @@ type KafkaUpstreamConf struct {
 type KafkaMessageAttr struct {
 	partition int32
 	topic     string
-	key       string
+	key       []byte
+}
+
+func getBytes(key interface{}) []byte {
+	return []byte(fmt.Sprintf("%v", key))
 }
 
 func getHeaderWithPrefix(headerPrefix, headerKey string) string {
 	return fmt.Sprintf("%s%s", headerPrefix, headerKey)
 }
 
-func getHeaderAttrs(header pkgHTTP.Header, conf KafkaUpstreamConf) KafkaMessageAttr {
+func newKafkaMessageAttr(conf KafkaUpstreamConf) *KafkaMessageAttr {
+	var attrs KafkaMessageAttr
+	attrs.topic = conf.Topic
+	attrs.partition = conf.Partition
+	attrs.key = getBytes(conf.Key)
+	return &attrs
+}
+
+func setHeaderAttrs(attrs *KafkaMessageAttr, conf KafkaUpstreamConf, header pkgHTTP.Header) {
 	var attr KafkaMessageAttr
 
 	// Kafka Topic
-	attr.topic = conf.Topic
 	hTopic := header.Get(getHeaderWithPrefix(conf.HeaderPrefix, HeaderTopic))
 	if len(hTopic) > 0 {
-		attr.topic = hTopic
+		attrs.topic = hTopic
 		log.Infof("Header value found: key=%s value=%s", HeaderTopic, attr.topic)
 	}
 
 	// Kafka Partition
-	attr.partition = conf.Partition
 	hPartition, err := strconv.ParseInt(header.Get(getHeaderWithPrefix(conf.HeaderPrefix, HeaderPartition)), 10, 32)
 	if err == nil {
-		attr.partition = int32(hPartition)
+		attrs.partition = int32(hPartition)
 		log.Infof("Header value found: key=%s value=%d", HeaderPartition, attr.partition)
 	}
 	if attr.partition == HeaderPartitionAny {
-		attr.partition = kafka.PartitionAny
+		attrs.partition = kafka.PartitionAny
 		log.Infof("Header '%s' is kafka.PartitionAny=%d", HeaderPartition, attr.partition)
 	}
 
 	// Kafka Message key
-	attr.key = conf.Key
 	hKey := header.Get(getHeaderWithPrefix(conf.HeaderPrefix, HeaderKey))
 	if len(hKey) > 0 {
-		attr.key = hKey
+		attrs.key = getBytes(hKey)
 		log.Infof("Header value found: key=%s value=%d", HeaderKey, hKey)
 	}
-
-	return attr
-
 }
 
 func init() {
@@ -184,6 +190,7 @@ func (p *KafkaUpstream) ParseConf(in []byte) (interface{}, error) {
 
 func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTTP.Request) {
 	log.Infof("KafkaUpstream Filter()")
+	log.Infof("Config: %+v", conf.(KafkaUpstreamConf))
 	var err error
 
 	if kProducer == nil {
@@ -196,8 +203,8 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 		}
 	}
 
-	// Request Header attributes (partition, key, topic)
-	attrs := getHeaderAttrs(r.Header(), conf.(KafkaUpstreamConf))
+	// Get request Header attributes (partition, key, topic)
+	attrs := newKafkaMessageAttr(conf.(KafkaUpstreamConf))
 
 	// Request body ("application/json")
 	body, err := r.Body()
@@ -208,7 +215,7 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 	}
 	// The header "content-type=application/json" is set explicetly; (un)marshals the body bytes'
 	if r.Header().Get(HeaderContentType) == HeaderContentTypeApplicationJson {
-		var parser *gojq.JQ
+
 		var i interface{}
 		err = json.Unmarshal(body, &i)
 		if err != nil {
@@ -222,24 +229,24 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 			p.writeMessage(w, 400, "Error marshaling request body")
 			return
 		}
-		// Check that http header "key" is not set and that the  global conf "jsonkey" is set; if yes get the key from the JSON body
-		if len(attrs.key) == 0 && len(conf.(KafkaUpstreamConf).JsonKey) > 0 {
-			parser = gojq.NewQuery(i)
-			key, err := parser.QueryToString(conf.(KafkaUpstreamConf).JsonKey)
-			if err != nil {
-				log.Errorf("Error getting json key with JQ querytostring")
-			} else {
-				attrs.key = key
-			}
+		// If the global conf "jsonkey" is set use it to extract the value from the josn bytes
+		if len(conf.(KafkaUpstreamConf).JsonKey) > 0 {
+			log.Infof("The header attributes header key is nil; the global conf jsonkey is set; get the kafka message key from the json")
+			v := gjson.GetBytes(body, conf.(KafkaUpstreamConf).JsonKey)
+			attrs.key = getBytes(v.String())
+			log.Infof("Extracted json key: hey=%v - string=%s", attrs.key, v.String())
 		}
 
 	}
+
+	// Set local / header attributes
+	setHeaderAttrs(attrs, conf.(KafkaUpstreamConf), r.Header())
 
 	// Produce messages to topic (asynchronously)
 	log.Infof("Sending Kafka message ::: partition=%d - topic=%s - key=%s - message=%s", attrs.partition, attrs.topic, attrs.key, string(body))
 	kProducer.Produce(&kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &attrs.topic, Partition: attrs.partition},
-		Key:            []byte(attrs.key),
+		Key:            attrs.key,
 		Value:          body,
 	}, deliveryChan)
 
