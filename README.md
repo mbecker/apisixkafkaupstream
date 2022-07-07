@@ -67,6 +67,9 @@ The usage of global vs. http header configuration is as follows:
 http header > Global
 * The http header attributes overwrites the global configuration
 
+Global(jsonkey) > Global(key)
+* The global jsonkey overwrites the global key
+
 http header(key) > Global(jsonkey)
 * The http header "key" overwrites the global configuration "jsonkey"
 ```
