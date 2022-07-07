@@ -25,3 +25,10 @@ go.work
 apisixkafkaupstream
 .env
 !.env.backup
+
+## Example(s)
+example/apisix_log/*
+!example/apisix_log/.gitkeep
+
+example/etcd_data/*
+!example/etcd_data/.gitkeep
