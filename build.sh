@@ -1,0 +1,1 @@
+docker build . --no-cache --force-rm -t matsbecker/apisixkafkaupstream:v1 -t matsbecker/apisixkafkaupstream:latest
