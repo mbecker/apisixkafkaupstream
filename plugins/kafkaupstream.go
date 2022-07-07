@@ -71,7 +71,7 @@ func getHeaderWithPrefix(headerPrefix, headerKey string) string {
 	return fmt.Sprintf("%s%s", headerPrefix, headerKey)
 }
 
-func getHeaderAttrs(header pkgHTTP.Header, parser *gojq.JQ, conf KafkaUpstreamConf) KafkaMessageAttr {
+func getHeaderAttrs(header pkgHTTP.Header, conf KafkaUpstreamConf) KafkaMessageAttr {
 	var attr KafkaMessageAttr
 
 	// Kafka Topic
@@ -96,14 +96,6 @@ func getHeaderAttrs(header pkgHTTP.Header, parser *gojq.JQ, conf KafkaUpstreamCo
 
 	// Kafka Message key
 	attr.key = conf.Key
-	if len(conf.JsonKey) > 0 {
-		attr.key, err = parser.QueryToString(conf.JsonKey)
-		if err != nil {
-			log.Errorf("Error getting json key with JQ querytostring")
-			// In case, use the global plugin config "key" as the fallback
-			attr.key = conf.Key
-		}
-	}
 	hKey := header.Get(getHeaderWithPrefix(conf.HeaderPrefix, HeaderKey))
 	if len(hKey) > 0 {
 		attr.key = hKey
@@ -204,40 +196,19 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 		}
 	}
 
-	body, err := r.Body()
+	// Request Header attributes (partition, key, topic)
+	attrs := getHeaderAttrs(r.Header(), conf.(KafkaUpstreamConf))
 
+	// Request body ("application/json")
+	body, err := r.Body()
 	if err != nil {
 		log.Errorf("Error fetching request body: %s", err)
 		p.writeMessage(w, 400, "Error fetching request body")
 		return
 	}
-
-	var parser *gojq.JQ
+	// The header "content-type=application/json" is set explicetly; (un)marshals the body bytes'
 	if r.Header().Get(HeaderContentType) == HeaderContentTypeApplicationJson {
-
-		// parser, err = gojq.NewStringQuery(string(body))
-		// if err != nil {
-		// 	log.Errorf("Error creating a new &JQ from a raw JSON string: %s", err)
-		// 	p.writeMessage(w, 400, "Error creating JQ")
-		// 	return
-		// }
-		// err = json.Unmarshal(body, parser.Data)
-
-		// The header "content-type" is "application/json"; compact the JSON-encoded raw body byte array
-		// buffer := new(bytes.Buffer)
-		// if err := json.Compact(buffer, b); err != nil {
-		// 	log.Errorf("Error compacting raw body to json: body=%s error=%s", string(b), err)
-		// 	p.writeMessage(w, 400, "Error compacting json")
-		// 	return
-		// }
-		// b = buffer.Bytes()
-		// log.Infof("Request body after json compact: %s", string(b))
-
-		/*
-		 * TODO: 	The following section unmarshals the raw body into a generic (json) struct and the re-marshal it to bytes
-		 *			It compacts the string (removes spaces), parses the string and validates it
-		 *			Which code is faster?
-		 */
+		var parser *gojq.JQ
 		var i interface{}
 		err = json.Unmarshal(body, &i)
 		if err != nil {
@@ -245,45 +216,24 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 			p.writeMessage(w, 400, "Error unmarshaling request body")
 			return
 		}
-		parser = gojq.NewQuery(i)
 		body, err = json.Marshal(i)
 		if err != nil {
 			log.Errorf("Error marshaling request body: %s", err)
 			p.writeMessage(w, 400, "Error marshaling request body")
 			return
 		}
+		// Check that http header "key" is not set and that the  global conf "jsonkey" is set; if yes get the key from the JSON body
+		if len(attrs.key) == 0 && len(conf.(KafkaUpstreamConf).JsonKey) > 0 {
+			parser = gojq.NewQuery(i)
+			key, err := parser.QueryToString(conf.(KafkaUpstreamConf).JsonKey)
+			if err != nil {
+				log.Errorf("Error getting json key with JQ querytostring")
+			} else {
+				attrs.key = key
+			}
+		}
 
 	}
-
-	// Kafka Topic
-	// topic := conf.(KafkaUpstreamConf).Topic
-	// hTopic := r.Header().Get(getHeaderWithPrefix(headerPrefix, HeaderTopic))
-	// if len(hTopic) > 0 {
-	// 	topic = hTopic
-	// 	log.Infof("Header value found: key=%s value=%s", HeaderTopic, topic)
-	// }
-
-	// // Kafka Partition
-	// partition := conf.(KafkaUpstreamConf).Partition
-	// hPartition, err := strconv.ParseInt(r.Header().Get(getHeaderWithPrefix(headerPrefix, HeaderPartition)), 10, 32)
-	// if err == nil {
-	// 	partition = int32(hPartition)
-	// 	log.Infof("Header value found: key=%s value=%d", HeaderPartition, partition)
-	// }
-	// if partition == kafka.PartitionAny {
-	// 	partition = kafka.PartitionAny
-	// 	log.Infof("Header '%s' is kafka.PartitionAny=%d", HeaderPartition, partition)
-	// }
-
-	// // Kafka Message key
-	// key := conf.(KafkaUpstreamConf).Key
-	// hKey := r.Header().Get(getHeaderWithPrefix(headerPrefix, HeaderKey))
-	// if len(hKey) > 0 {
-	// 	key = hKey
-	// 	log.Infof("Header value found: key=%s value=%d", HeaderKey, hKey)
-	// }
-
-	attrs := getHeaderAttrs(r.Header(), parser, conf.(KafkaUpstreamConf))
 
 	// Produce messages to topic (asynchronously)
 	log.Infof("Sending Kafka message ::: partition=%d - topic=%s - key=%s - message=%s", attrs.partition, attrs.topic, attrs.key, string(body))
