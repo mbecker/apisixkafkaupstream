@@ -1,11 +1,10 @@
 curl --location --request POST 'http://localhost:9080/kafkaupstream' \
---header 'topic: kafkaupstream' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "glossary": {
         "title": "example glossary",
 		"GlossDiv": {
-            "title": "S",
+            "title": "The Kafka Message ID configured globally by jsonkey",
 			"GlossList": {
                 "GlossEntry": {
                     "ID": "SGML",
