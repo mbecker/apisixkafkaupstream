@@ -48,7 +48,15 @@ ext-plugin:
     - "/usr/local/apisix/plugins/kafkaupstream"
 ```
 
+## Docker compose
 
+The directory "example" includes the docker compose files / folders from the original [Apache Apisix Docker git repo](https://github.com/apache/apisix-docker/tree/master/example). The changes to use the plugin kafkaupstream in the Apisix gateway are as follows:
+
+- The configuration for the Apisix gateway is updated as described above (see file: "examples/apisix_conf/config.yaml")
+- The Docker compose file is updated to build the Docker image as described above (alternativ: use the already built image which is pushed to Docker hub)
+- Scripts added to start/stop the containers
+
+** The docker compose file is for the platform arm64
 
 # Configuration
 
