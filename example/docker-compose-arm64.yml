@@ -29,14 +29,14 @@ services:
       apisix:
 
   apisix:
-    image: matsbecker/apisixkafkaupstream:v1
-    # build: # "context" and "dockerfile" fields have to be under "build"
-    #   context: ./../
-    #   network: host
-    #   dockerfile: Dockerfile
-    #   cache_from:
-    #     - apache/apisix:2.14.1-centos
-    #     - golang:1.18.3
+    # image: matsbecker/apisixkafkaupstream:v1
+    build: # "context" and "dockerfile" fields have to be under "build"
+      context: ./../
+      network: host
+      dockerfile: Dockerfile
+      cache_from:
+        - apache/apisix:2.14.1-centos
+        - golang:1.18.3
     restart: always
     volumes:
       - ./apisix_log:/usr/local/apisix/logs
