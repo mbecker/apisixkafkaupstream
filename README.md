@@ -8,7 +8,7 @@
 
 This git repository is an [Apache Apisix](https://apisix.apache.org/) [go(lang) plugin](https://apisix.apache.org/docs/go-plugin-runner/getting-started/) to have a plugin which
 - acts as an upstream service
-- accepts http(s) requests
+- accepts http(s) requests with (json) body
 - produces a Kafka message with the http body to a topic
 
 The process / communication flow is as follows
