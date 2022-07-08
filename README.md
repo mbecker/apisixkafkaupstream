@@ -1,37 +1,50 @@
 # Apixis Kafka Upstream (go plugin)
-<center>
-Buy me a coffee and support me :-)<br /><br />
+<p align="center">
+Buy me a coffee and support me :-)
 
 [![paypal](https://raw.githubusercontent.com/stefan-niedermann/paypal-donate-button/master/paypal-donate-button.png)](https://paypal.me/matsbecker?country.x=DE&locale.x=de_DE)
-<br /><br />
-</center>
+</p>
 
 
-This git repository is an [Apache Apisix](https://apisix.apache.org/) [go(lang) plugin](https://apisix.apache.org/docs/go-plugin-runner/getting-started/) to have a generic upstream service service which accepts http(s) requests and sends the body to a Kafka topic.
+This git repository is an [Apache Apisix](https://apisix.apache.org/) [go(lang) plugin](https://apisix.apache.org/docs/go-plugin-runner/getting-started/) to have a plugin which
+- acts as an upstream service
+- accepts http(s) requests
+- produces a Kafka message with the http body to a topic
 
 The process / communication flow is as follows
 ```sh
 http(s) request -> Apisix (-> Apisix Plugins) -> Apisix Kafka Upstream Plugin -> Kafka Borker / Topic
 ```
 
-The configuration for the Kafka broker, topic, and messages can be either configured for the plugin globally and / or for each http(s) request by setting the correct http headers (see plugin configuration for more details).
+The configuration for the Kafka broker, topic, and messages can be either configured for the plugin globally and / or for each http(s) request. By sending the correct http headers (see plugin configuration for more details) the plugin uses the header attributes as the config rather the global configuration.
 
-The kakfa upstream plugin produce messages to the topic asynchronously. The http response is sent back immediately as the Kafka message is produced. This means, the http response does not guarantee that the message is acknowledged by the Kafka broker but that the http body + Kafka configuration + Kafka message is correct and sent to the Kafka topic.
+The kakfa upstream plugin produce messages to the topic asynchronously. The http response is sent back immediately as the Kafka message is produced. This means, the http response does not guarantee that the message is acknowledged by the Kafka broker. The returned http status 200 defines
+- The http(s) request + (json) body is ok
+- The global config and http header config is ok
+- The Kafka connection configuration is ok and a Kakfa connection is established
+-  The Kafka message with header like partition, key, topic is produced
 
-The most simple configraution and use case is that the kafka usptream plugin takes the http body and sends it to a Kafka topic as is. By setting the the header "content-type=application/json" the plugin takes and elides the body bytes with insignificant space characters by using the standard library json.Compact.
+The most simple configraution and use case is that the kafka usptream plugin takes the http body and sends it to a Kafka topic as is. By setting the the header "content-type=application/json" the plugin takes and elides the body bytes with insignificant space characters by using the standard library [json.Compact](https://pkg.go.dev/encoding/json#Compact).
 
 ## Build
 
-The code includes the library [confluent kafka go](github.com/confluentinc/confluent-kafka-go) to prouduces messages to Kafka. The plugin is a wrapper for a C-library called librdkafka. By using an golang:alpine-Image the C-library must be compiled with alpine's C-compiler (musl) and the go build command must include the tags '-tags musl --ldflags "-extldflags -static'.
+The code includes the library [confluent kafka go](github.com/confluentinc/confluent-kafka-go) to prouduces messages to Kafka. The plugin is a wrapper for a C-library called [librdkafka](https://github.com/edenhill/librdkafka).
+
+By using an golang:alpine-Image the C-library must be compiled with alpine's C-compiler (musl) and the go build command must include the tags
+
+```sh
+# Image: golang:1.18.3-alpine
+go build -tags musl --ldflags "-extldflags -static" -o kafkaupstream .
+```
+
+## Dockerfile
 
 The Dockerfile uses a multi-stage build process to
 - (Stage: base) Download and build the C-library librdkafka
 - (Stage: build) Set the correct Go-Build-Env and Tags + Build the go project
 - (Stage: last) Use the default apisix-alpine Image and copy the go binary to it's image
 
-** I'm using a Macbook Pro M1 and having some problems withe the C-library librdkafka and alpine's C-compiler musl and Docker to build multi-arch images. I'm using the tag "--platform=linux/amd64" in the Dockerfile to target a specific platform to compile the C-library correctly. Any ideas and hints how to build a multi-arch image would be very helpful
-
-## How to build
+> I'm using a Macbook Pro M1 and having some problems withe the C-library librdkafka and alpine's C-compiler musl and Docker to build multi-arch images. I'm using the tag "--platform=linux/amd64" in the Dockerfile to target a specific platform to compile the C-library correctly. Any ideas and hints how to build a multi-arch image would be very helpful
 
 Use the Dockerfile and the appropriate docker-commands to build and tag the image.
 
