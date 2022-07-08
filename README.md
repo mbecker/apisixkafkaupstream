@@ -6,14 +6,14 @@
 </p>
 
 
-This git repository is an [Apache Apisix](https://apisix.apache.org/) [go(lang) plugin](https://apisix.apache.org/docs/go-plugin-runner/getting-started/) to have a plugin which
+This git repository is an [Apache Apisix](https://apisix.apache.org/) [go(lang) plugin](https://apisix.apache.org/docs/go-plugin-runner/getting-started/) which
 - acts as an upstream service
 - accepts http(s) requests with (json) body
-- produces a Kafka message with the http body to a topic
+- produces the (json) body to a Kafka topic
 
 The process / communication flow is as follows
 ```sh
-http(s) request -> Apisix (-> Apisix Plugins) -> Apisix Kafka Upstream Plugin -> Kafka Borker / Topic
+http(s) request -> Apisix (-> Apisix Plugins) -> Apisix Kafka Upstream Plugin -> Kafka Broker / Topic
 ```
 
 The configuration for the Kafka broker, topic, and messages can be either configured for the plugin globally and / or for each http(s) request. By sending the correct http headers (see plugin configuration for more details) the plugin uses the header attributes as the config rather the global configuration.
@@ -109,6 +109,33 @@ http header(key) > Global(jsonkey)
 | jsonkey: string      	| Global               	| -                  	| By defining the configuration "jsonkey" the plugin gets the key from the JSON message. The plugin [github.com/tidwall/gjson](github.com/tidwall/gjson) is used to get the json value (use the syntax of the plugin)<br/><br/><strong>Important:</strong> The http header "content-type=application/json" must be set.                                                                                                                                                                                                                                                                              	|
 | content-type: string 	| http header          	| "application/json" 	| Standard http-header "content-type=application/json". By sending this header the plugin uses the standard library json.Compact. This elides the JSON-encoded body with insignificant space characters. This reduces the bytes sent to Kafka (but may be slower than just sending the body bytes as is). Sending an invalid json body may result in unexpected behaviour; the error response should be a http status code 400.<br/><br/><strong>Important:</strong> This http-header must be sent to use the configration "jsonkey". 	|
 
+## Configuration Example
+
+Create a route at Apache Apisix with the plugin kafkaupstream configured (the configuration for a custom plugin must be an encoded JSON string)
+
+```sh
+curl --verbose --location \
+--request PUT 'http://127.0.0.1:9080/apisix/admin/routes/kafkaupstream' \
+--header 'x-api-key: edd1c9f034335f136f87ad84b625c8f1' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "methods": ["POST"],
+  "name": "kafkaupstream",
+  "host": "localhost",
+  "uri": "/kafkaupstream",
+  "plugins": {
+    "ext-plugin-pre-req": {
+      "conf": [
+        {
+          "name": "kafkaupstream",
+          "value": "{\"config\":{\"bootstrap.servers\":\"vital-haddock-12803-eu1-kafka.upstash.io:9092\",\"security.protocol\":\"SASL_SSL\",\"sasl.mechanisms\":\"SCRAM-SHA-256\",\"sasl.username\":\"XXXX\",\"sasl.password\":\"XXXX\",\"acks\":\"all\",\"retries\":3,\"batch.size\":9000000},\"topic\":\"kafkaupstream\",\"partition\":-1,\"jsonkey\":\"glossary.GlossDiv.title\"}"
+        }
+      ]
+    }
+  }
+}'
+```
+
 ## Configuration Example (global) for upstash
 
 > Replace the cofiguration details in the following files / codes with your details
@@ -149,3 +176,9 @@ go build -o kafkaupstream --tags dynamic
 ```
 
 For more details see: [https://github.com/confluentinc/confluent-kafka-go/issues/591](https://github.com/confluentinc/confluent-kafka-go/issues/591)
+
+# TODO
+
+Roadmap stuff
+
+- [ ] The plugin configuration takes a JSON object for the Kafka connection configuration; at the moment the config object must be simple with key(string)/value; the confluent go plugin takes additional Configmap
