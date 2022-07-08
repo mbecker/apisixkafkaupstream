@@ -27,6 +27,7 @@ import (
 	"github.com/apache/apisix-go-plugin-runner/pkg/log"
 	"github.com/apache/apisix-go-plugin-runner/pkg/plugin"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/mbecker/apisixkafkaupstream/utils"
 	"github.com/tidwall/gjson"
 )
 
@@ -216,19 +217,13 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 	// The header "content-type=application/json" is set explicetly; (un)marshals the body bytes'
 	if r.Header().Get(HeaderContentType) == HeaderContentTypeApplicationJson {
 
-		var i interface{}
-		err = json.Unmarshal(body, &i)
+		body, err = utils.JsonEncodingCompact(body)
 		if err != nil {
-			log.Errorf("Error unmarshaling request body: %s", err)
-			p.writeMessage(w, 400, "Error unmarshaling request body")
+			log.Errorf("Error json encoding compact; fallback to original body data")
+			p.writeMessage(w, 400, "error json encoding")
 			return
 		}
-		body, err = json.Marshal(i)
-		if err != nil {
-			log.Errorf("Error marshaling request body: %s", err)
-			p.writeMessage(w, 400, "Error marshaling request body")
-			return
-		}
+
 		// If the global conf "jsonkey" is set use it to extract the value from the josn bytes
 		if len(conf.(KafkaUpstreamConf).JsonKey) > 0 {
 			log.Infof("The header attributes header key is nil; the global conf jsonkey is set; get the kafka message key from the json")
@@ -239,7 +234,7 @@ func (p *KafkaUpstream) Filter(conf interface{}, w http.ResponseWriter, r pkgHTT
 
 	}
 
-	// Set local / header attributes
+	// Set header conf attributes like partition, topic, key
 	setHeaderAttrs(attrs, conf.(KafkaUpstreamConf), r.Header())
 
 	// Produce messages to topic (asynchronously)
